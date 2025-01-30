@@ -25,22 +25,34 @@ allocation of resources that are used by Cloud Bigtable. When you create an
 instance, you must specify at least one cluster. Clusters describe where your
 data is stored and how many nodes are used for your data.
 
-Use {Google::Cloud::Bigtable::Project#create_instance Project#create_instance}
-to create an instance. The following example creates a production instance with
-one cluster and three nodes:
+To create an instance, use the instance admin client, which you can get from
+{Google::Cloud::Bigtable::Project#instance_admin_client Project#instance_admin_client}.
+The following example creates a production instance with one cluster and three
+nodes:
 
 ```ruby
 require "google/cloud/bigtable"
 
 bigtable = Google::Cloud::Bigtable.new
+instance_client = bigtable.instance_admin_client
 
-job = bigtable.create_instance(
-  "my-instance",
+instance_attrs = {
   display_name: "Instance for user data",
   labels: { "env" => "dev"}
-) do |clusters|
-  clusters.add("test-cluster", "us-east1-b", nodes: 3, storage_type: :SSD)
-end
+}
+clusters = {
+  "test-cluster" => {
+    location: "us-east1-b",
+    nodes: 3,
+    storage_type: :SSD
+  }
+}
+job = instance_client.create_instance(
+  parent: "projects/my-project",
+  instance_id: "my-instance",
+  instance: instance_attrs,
+  clusters: clusters
+)
 
 job.done? #=> false
 
@@ -51,7 +63,7 @@ job.done? #=> true
 if job.error?
   status = job.error
 else
-  instance = job.instance
+  instance = job.response.instance
 end
 ```
 
@@ -61,19 +73,28 @@ monitoring or throughput guarantees; replication is not available; and the SLA
 does not apply. When creating a development instance, you do not specify `nodes`
 for your clusters:
 
- ```ruby
+```ruby
 require "google/cloud/bigtable"
 
 bigtable = Google::Cloud::Bigtable.new
+instance_client = bigtable.instance_admin_client
 
-job = bigtable.create_instance(
-  "my-instance",
+instance_attrs = {
   display_name: "Instance for user data",
   type: :DEVELOPMENT,
   labels: { "env" => "dev"}
-) do |clusters|
-  clusters.add("test-cluster", "us-east1-b") # nodes not allowed
-end
+}
+clusters = {
+  "test-cluster" => {
+    location: "us-east1-b", # nodes not allowed
+  }
+}
+job = instance_client.create_instance(
+  parent: "projects/my-project",
+  instance_id: "my-instance",
+  instance: instance_attrs,
+  clusters: clusters
+)
 
 job.done? #=> false
 
@@ -84,9 +105,9 @@ job.done? #=> true
 if job.error?
   status = job.error
 else
-  instance = job.instance
+  instance = job.response.instance
 end
- ```
+```
 
 You can upgrade a development instance to a production instance at any time.
 
@@ -105,16 +126,22 @@ different timestamps, providing a record of how the stored data has been altered
 over time. Cloud Bigtable tables are sparse; if a cell does not contain any
 data, it does not take up any space.
 
-Use {Google::Cloud::Bigtable::Project#create_table Project#create_table} or
-{Google::Cloud::Bigtable::Instance#create_table Instance#create_table} to
-create a table:
+To create an instance, use the table admin client, which you can get from
+{Google::Cloud::Bigtable::Project#table_admin_client Project#table_admin_client},
+as illustrated in the following example:
 
 ```ruby
 require "google/cloud/bigtable"
 
 bigtable = Google::Cloud::Bigtable.new
+table_client = bigtable.table_admin_client
 
-table = bigtable.create_table("my-instance", "my-table")
+table = table_client.create_table(
+  parent: "projects/my-project/instances/my-instance",
+  table_id: "my-table",
+  table: {}
+)
+
 puts table.name
 ```
 
@@ -126,6 +153,7 @@ table into several tablets (tablets are similar to HBase regions):
 require "google/cloud/bigtable"
 
 bigtable = Google::Cloud::Bigtable.new
+table_client = bigtable.table_admin_client
 
 initial_splits = ["user-00001", "user-100000", "others"]
 table = bigtable.create_table("my-instance", "my-table", initial_splits: initial_splits) do |cfm|
